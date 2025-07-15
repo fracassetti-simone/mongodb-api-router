@@ -43,17 +43,18 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(apiRoute(Book, {
     language: BrowserLanguage,
     filter: [
-        ({ req, res }) => !!req.user,
+        ({ req, res }) => !req.user,
         async ({ req, res, query }) => {
             // Intercettazione query per assicurarsi i permessi corretti
             console.log(query);
-            query._id = '687644fdbc78aa569c8dee5b';
             return true;
         }
     ],
     fields: {
+        Title: { it: 'Titolo' },
         __v: { show: false }
     },
+    pagesManager: true,
     options: {
         get: {
             skimming: async ({ req, res, document }) => {

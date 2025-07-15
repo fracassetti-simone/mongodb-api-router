@@ -212,18 +212,17 @@ function apiRoute(model, options = {}){
                     pagesManager = { limit: '?limit', page: '?page' };
 
                 const maxResults = pagesManager.maxResults || 200;
+                const limitQueryParam = limit?.startsWith?.('?') ? limit.substring(1) : 'limit';
+                const pageQueryParam = page?.startsWith?.('?') ? page.substring(1) : 'page';
                 
-                if(limit?.startsWith?.('?')){
-                    ignoreFields.push(limit.substring(1));
-                    limit = Number(req.query[limit.substring(1)]) || maxResults;
-                }
+                ignoreFields.push(limitQueryParam);
+                ignoreFields.push(pageQueryParam);
+                limit = Number(req.query[limitQueryParam]) || maxResults;
+                page = Number(req.query[pageQueryParam]) || 1;
+
                 if(limit > maxResults)
                     limit = maxResults;
 
-                if(page?.startsWith?.('?')){
-                    ignoreFields.push(page.substring(1));
-                    page = Number(req.query[page.substring(1)]) || 1;
-                }
                 if(Number.isNaN(Number(limit)))
                     limit = maxResults;
                 if(Number.isNaN(Number(page)) || page < 1)
@@ -261,6 +260,12 @@ function apiRoute(model, options = {}){
             return query;
         }
 
+        let lang;
+        if(language && language !== BrowserLanguage)
+            lang = language;
+        else
+            lang = req.acceptsLanguages()[0]?.split?.('-')?.[0]?.toLowerCase?.() || 'en';
+
         // Further options
         const furtherOptions = options.options?.[req.method] || options.options?.[req.method.toLowerCase()] || {};
 
@@ -269,6 +274,24 @@ function apiRoute(model, options = {}){
 
         if(furtherOptions.middleware && typeof furtherOptions.middleware === 'function')
             furtherOptions.middleware = [ furtherOptions.middleware ];
+
+        if(Array.isArray(acceptedQueryFields))
+            acceptedQueryFields = {
+                GET: acceptedQueryFields,
+                POST: acceptedQueryFields,
+                PUT: acceptedQueryFields,
+                DELETE: acceptedQueryFields
+            }
+
+        let queryFields = acceptedQueryFields?.[req.method] || acceptedQueryFields?.[req.method.toLowerCase()] || Object.keys(model.schema.paths);
+
+        const ignoreFields = [];
+        let limit, page;
+        if(pagesManager){
+            limit = pagesManager.limit;
+            page = pagesManager.page;
+        }
+
 
         const skimming = async results => {
             if(!furtherOptions.skimming?.length)
@@ -320,12 +343,6 @@ function apiRoute(model, options = {}){
         if(req.method !== 'PUT')
             query = parseFilter([ 'DELETE', 'GET' ].includes(req.method) ? req.query : req.body, customFields);
 
-        let lang;
-        if(language && language !== BrowserLanguage)
-            lang = language;
-        else
-            lang = req.acceptsLanguages()[0]?.split?.('-')?.[0]?.toLowerCase?.() || 'en';
-
         res.sendMessage = (number, replace) => {
             const ok = res.statusCode >= 200 && res.statusCode < 300;
             res.json({ ok, status: res.statusCode, [ ok ? 'message': 'error' ]: message(number, lang, replace) });
@@ -352,35 +369,15 @@ function apiRoute(model, options = {}){
             }
         }
 
-        if(Array.isArray(acceptedQueryFields))
-            acceptedQueryFields = {
-                GET: acceptedQueryFields,
-                POST: acceptedQueryFields,
-                PUT: acceptedQueryFields,
-                DELETE: acceptedQueryFields
-            }
-
-        let queryFields = acceptedQueryFields?.[req.method] || acceptedQueryFields?.[req.method.toLowerCase()] || Object.keys(model.schema.paths);
-
-        const ignoreFields = [];
-        let limit, page;
-        if(pagesManager){
-            limit = pagesManager.limit;
-            page = pagesManager.page;
-        }
 
         const catchMongoDBError = error => {
             if(error.name === 'ValidationError'){
                 const errors = [];
 
                 for(let field in error.errors){
-                    const fieldError = error.errors[field];
-                    console.log(`Campo: ${field}`);
-                    console.log(`Tipo errore: ${fieldError.kind}`);
-                    console.log(`Messaggio: ${fieldError.message}`);
-                    
+                    const fieldError = error.errors[field];                    
                     let errorMessage;
-                    const translatedField = customFields[field][lang] || field;
+                    const translatedField = customFields?.[field]?.[lang] || field;
                     if(fieldError.kind === 'required')
                         errorMessage = message(3, lang, { target: translatedField });
                     else if(fieldError.kind === 'minlength')
@@ -412,7 +409,6 @@ function apiRoute(model, options = {}){
             if(res.headersSent)
                 return;
             let results;
-
             if(pagesManager)
                 results = await model.find(query).sort({ _id: 1 }).skip((page - 1) * limit).limit(limit).lean();
             else
@@ -435,7 +431,7 @@ function apiRoute(model, options = {}){
                     }
                 }));
 
-            return res.json({ ok: true, [ model.collection.name ]: results });
+            return res.json({ ok: true, [ model.collection.name ]: results, pagesManager: pagesManager ? { page, offset: limit } : undefined });
         }
         else if(req.method === 'POST'){
             delete query._id;
