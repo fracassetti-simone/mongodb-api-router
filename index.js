@@ -397,7 +397,7 @@ function apiRoute(model, options = {}){
                         errorMessage = message(10, lang, { target: translatedField });
                     
 
-                    errors.push({ target: field, errorMessage })
+                    errors.push({ target: field, error: errorMessage })
                 }
 
                 return res.status(400).json({ ok: false, status: 400, errors });

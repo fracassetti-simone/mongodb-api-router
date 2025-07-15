@@ -240,7 +240,7 @@ Se attivo, interpreta parametri `?limit` e `?page`, applica:
 ```js
 if(error.name === 'ValidationError') {
   // Mappa gli errori Mongoose in array di
-  // { target: field, errorMessage: string }
+  // { target: field, error: string }
   // con messaggi tradotti (codici 3–10)
 }
 ```
@@ -320,7 +320,7 @@ app.listen(3000, () => console.log('Server avviato 🚀'));
 | Codice HTTP | Body                                                               |
 |-------------|--------------------------------------------------------------------|
 | 200/201     | `{ ok: true, ... }` (array o documento)                           |
-| 400         | `{ ok: false, status: 400, errors: [ { target, errorMessage } ] }`<br>oppure `<  errors  >` per campi non ammessi              |
+| 400         | `{ ok: false, status: 400, errors: [ { target, error } ] }`<br>oppure `<  errors  >` per campi non ammessi              |
 | 403         | `{ ok: false, status: 403, error: string }`                        |
 | Altro       | Passa al `next()` per gestioni esterne (es. 404, 405, ecc.)        |
 
