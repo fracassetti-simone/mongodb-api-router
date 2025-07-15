@@ -1,254 +1,201 @@
+# Guida all’uso di **apiRoute**
 
-## Introduzione  
-
-`apiRoute` è un **middleware** Express progettato per trasformare un qualunque *Mongoose Model* in un endpoint REST “tutto‑in‑uno”.  
-Oltre a esporre le classiche operazioni **GET / POST / PUT / DELETE**, il wrapper aggiunge:
-
-* **Controllo dei metodi** e del percorso.  
-* **Filtro preliminare** a più stadi.  
-* **Traduzione multilingua** dei messaggi d’errore e dei nomi di campo.  
-* **Paginazione** (con limiti di sicurezza).  
-* **Whitelisting dei parametri di query** e blocco dei parametri non ammessi.  
-* **Middleware personalizzati** (pre‑, post‑ e “skimming”).  
-* **Pulizia e rimappatura dei documenti** in uscita.  
-* Gestione delle eccezioni Mongoose con risposta strutturata.  
-
-Di seguito una descrizione, punto per punto, dell’intero flusso che segue una richiesta HTTP fino alla risposta finale.
+Questa guida spiega **come integrare, configurare e utilizzare** il middleware `apiRoute` nel tuo progetto Express + Mongoose.  
+Non serve conoscere l’implementazione interna: ti basta seguire i passi descritti qui sotto.
 
 ---
 
-## 1. Impostazione del middleware
+## 1 · Prerequisiti
+
+| Requisito            | Versione consigliata |
+|----------------------|----------------------|
+| Node.js              | ≥ 16 LTS            |
+| Express              | ≥ 4.18              |
+| Mongoose             | ≥ 7                 |
+
+Installa le dipendenze di base:
+
+```bash
+npm install express mongoose
+```
+
+---
+
+## 2 · Installazione
+
+Copia il file `apiRoute.js` all’interno del tuo progetto (o installalo come package se pubblicato su npm).
 
 ```js
-app.use(apiRoute(Book, { …opzioni… }));
+// apiRoute.js
+module.exports = apiRoute;   // esporta la funzione
 ```
-
-* **model**: qualunque istanza `mongoose.model`.
-* **options**: oggetto di configurazione, approfondito nei capitoli seguenti.
 
 ---
 
-## 2. Parametri di configurazione
-
-| Chiave                | Tipo / Valori ammessi                                   | Default                 | Descrizione sintetica |
-|-----------------------|---------------------------------------------------------|-------------------------|-----------------------|
-| `filter`              | funzione o array di funzioni async `(req, res, next)`   | `[]`                    | Esecuzione *prima* di qualunque logica. Se **tutti** i filtri restituiscono `true`, la richiesta prosegue; in caso contrario la risposta viene inviata immediatamente. |
-| `methods`             | `['GET','POST','PUT','DELETE',…]` (case‑insensitive)    | tutti i `allowedMethods`| Elenco dei metodi ammessi per questo endpoint. |
-| `fields`              | `{ CampoMongo: { it:'…', en:'…', show:false }, … }`      | `{}`                    | Traduzione / mascheramento dei campi in output. |
-| `route`               | stringa con placeholder `{modelName}` / `{collectionName}` | `/api/<collection>`   | Percorso da intercettare. |
-| `pagesManager`        | { limit, page, maxResults }                             | `undefined`             | Abilita la paginazione. `limit` e `page` possono essere numeri fissi o il nome di un parametro di query preceduto da `?`. |
-| `acceptedQueryFields` | array **o** mappa per metodo (`{ get:[…], post:[…] }`)   | tutti i campi del modello | Campi di query permessi. Se `throwRefusedQueryFields` è `true`, i parametri non ammessi producono errore. |
-| `throwRefusedQueryFields` | boolean                                            | `false`                 | Se attivo, rifiuta la richiesta con errore n. 2 (messaggio localizzato). |
-| `language`            | codice ISO‑639‑1 **o** `BrowserLanguage`                | `BrowserLanguage`       | Lingua predefinita dei messaggi se non derivabile da `req.acceptsLanguages()`. |
-| `options`             | `{ get: {}, post:{}, put:{}, delete:{} }`               | `{}`                    | Specifiche aggiuntive per singolo verbo (middleware, skimming, fields…). |
-
-### 2.1  `options.<method>`
-
-| Chiave     | Tipo                                                      | Descrizione |
-|------------|-----------------------------------------------------------|-------------|
-| `middleware` | funzione o array di funzioni *(pre‑salvataggio / update)* | Riceve `{ document, req, res, next, query, set }` a seconda del verbo. Può modificare i dati o inviare direttamente la risposta. |
-| `skimming`   | funzione o array di funzioni *(post‑query)*              | Permette di filtrare o trasformare i documenti prima che tornino al client. Se una funzione restituisce **false** il documento viene scartato. |
-| `fields`     | override locale di `fields`                              | Vale solo per quel verbo. |
-
----
-
-## 3. Flusso dettagliato di una richiesta
-
-> La numerazione segue l’ordine di esecuzione nel middleware ritornato da `apiRoute`.
-
-1. **Riconoscimento lingua**  
-   *Se `options.language !== BrowserLanguage`* ⇒ usa quella.  
-   Altrimenti usa la prima lingua di `req.acceptsLanguages()` (solo parte prima di `-`, in lowercase).
-
-2. **Controllo Method + Path**  
-   – Se il metodo HTTP non è incluso in `methods`, `next()` ⇒ la route continua.  
-   – Se `req.path !== route`, idem.  
-
-3. **Filtri preliminari** (`filter`)  
-   Le funzioni vengono eseguite in serie:  
-   * `true` ⇒ continua.  
-   * `false` ⇒ `400 { error: "The request is invalid." }`.  
-   * Oggetto `res` ⇒ inviato così com’è (`status` di default = 400).  
-   * Qualsiasi altra cosa ⇒ corpo `{ ok:false, status:400, error:<valore> }`.  
-
-4. **Costruzione di `queryFields`**  
-   Se `acceptedQueryFields` è array → vale per tutti i verbi.  
-   Se è mappa → si prende la chiave del verbo corrente (`GET` / `get`).  
-   In assenza, si usa **tutta** la schema‑path list di Mongoose.
-
-5. **`parseFilter()`**  
-   *Clona* l’oggetto (`req.query` per GET/DELETE, `req.body` per POST, oppure `req.body.query` per PUT).  
-   - **Paginazione**: calcola `limit` e `page` (rispettando `maxResults`).  
-   - **Mappatura campi localizzati**: se `fields` contiene sinonimi per la lingua corrente, li converte nel nome Mongo.  
-   - **Controllo colonne**: se un key non è in `acceptedQueryFields` **e** `throwRefusedQueryFields===true` → errore n. 2 localizzato.  
-
-6. **Error Handler Mongoose** (`catchMongoDBError`)  
-   Intercetta `ValidationError`. Per ciascun campo prende `kind` e restituisce il relativo messaggio (da 3 a 10). L’output finale è:  
-
-```json
-{ "ok": false, "status": 400, "errors": [ { "target": "<campo>", "errorMessage": "<msg>" }, … ] }
-```
-
-   Eventuali lingue/campi localizzati vengono sostituiti.
-
-7. **Preparazione opzioni per verbo corrente**  
+## 3 · Primo esempio (5 minuti)
 
 ```js
-const furtherOptions = options.options[req.method] 
-                    || options.options[req.method.toLowerCase()] 
-                    || {};
+// index.js
+const express = require("express");
+const mongoose = require("mongoose");
+const apiRoute = require("./apiRoute");
+
+const app = express();
+app.use(express.json());
+
+mongoose.connect("mongodb://localhost/demo");
+
+// 1. Definisci il modello
+const Book = mongoose.model("Book", {
+  Title:  { type: String, required: true },
+  Author: { type: String },
+  Pages:  { type: Number }
+});
+
+// 2. Registra il middleware
+app.use(apiRoute(Book));   // espone /api/books
+
+// 3. Avvia il server
+app.listen(3000, () => console.log("API pronta su http://localhost:3000"));
 ```
 
-   Vengono estratti `middleware`, `skimming`, `fields` locali.
+Ora puoi provare:
 
-8. **Costruzione helper “universali”**  
-   * **`skimming(results)`** – Applicato dopo la query.  
-   * **`middleware(document, reportAllArguments)`** – Applicato prima di `save()`, `update()` o in GET senza parametri.
-
----
-
-## 4. Logica per singolo verbo
-
-### 4.1  GET
-1. Esegue eventuale `options.get.middleware({ query })`.  
-2. Effettua `model.find(query)` con `skip/limit` (se paginato).  
-3. Applica `skimming`.  
-4. Traduzione / nascondi campi (`customFields`).  
-5. Risposta:  
-
-```json
-{ "ok": true, "<collection>": [ …doc… ] }
+```bash
+curl -X POST http://localhost:3000/api/books      -H "Content-Type: application/json"      -d '{"Title":"1984","Author":"Orwell","Pages":350}'
 ```
 
-### 4.2  POST
-1. Pulisce body da `_id` e `__v`.  
-2. Crea `new model(body)` → `middleware(document)`.  
-3. `document.save()` con `catchMongoDBError`.  
-4. `skimming([document])`, traduzioni campi.  
-5. Risposta: `{ ok:true, document:<doc> }`.
-
-### 4.3  PUT
-1. Estrae `query` e `set` da `req.body`.  
-2. `middleware({ query, set }, reportAllArguments=true)`.  
-3. `findOneAndUpdate(query, set)` → recupera il record aggiornato.  
-4. `skimming`, traduzioni campi.  
-5. Risposta: `{ ok:true, <modelNameLower>:<doc> }`.
-
-### 4.4  DELETE
-1. `find(query).lean()` → eventuale `skimming`.  
-2. Se presente `skimming`, esegue `deleteOne` per ogni documento filtrato; altrimenti `deleteMany`.  
-3. Risposta: `{ ok:true }`.
-
----
-
-## 5. Traduzione campi (`fields` e `customFields`)
-
-```js
-fields: {
-  Title:  { it:'Titolo' },   // rinomina
-  __v:    { show:false }     // nasconde
-}
+```bash
+curl "http://localhost:3000/api/books?Title=1984"
 ```
 
-* L’oggetto viene unito (shallow‑merge) con eventuali override dentro `options.<verb>.fields`.  
-* Durante **output**, per ogni documento:  
-  - Se `show:false` ⇒ campo eliminato.  
-  - Se esiste la chiave della lingua corrente ⇒ crea l’alias traducendo il nome (es. `Title` → `Titolo`).  
+---
+
+## 4 · Percorso & Metodi predefiniti
+
+| Verbo | Route di default          | Note                                                                    |
+|-------|---------------------------|-------------------------------------------------------------------------|
+| GET   | `/api/<collection>`       | Ricerca con query string.                                               |
+| POST  | `/api/<collection>`       | Crea un nuovo documento.                                                |
+| PUT   | `/api/<collection>`       | Aggiorna uno o più campi su un solo record (`body.query` + `body.set`). |
+| DELETE| `/api/<collection>`       | Elimina i documenti che corrispondono alla query string.                |
+
+Puoi cambiare il percorso con l’opzione `route`.
 
 ---
 
-## 6. Paginazione (`pagesManager`)
-
-| Chiave      | Uso                                       |
-|-------------|-------------------------------------------|
-| `limit`     | Numero fisso *o* `'?nomeQueryParam'`.     |
-| `page`      | Idem.                                     |
-| `maxResults`| Tetto massimo oltre il quale **limit** viene forzato. |
-
-Esempio: con `limit:'?limit'` e `page:'?page'` una chiamata  
-`GET /db/books?limit=20&page=3` restituirà i documenti **41 → 60**.
-
----
-
-## 7. acceptedQueryFields & throwRefusedQueryFields
-
-* Se un parametro di query non è incluso in `acceptedQueryFields[verb]` → viene **rimosso** (silent fail).  
-* Se `throwRefusedQueryFields:true` il middleware abortisce con errore n. 2, restituendo il nome del parametro nella lingua corrente.
-
----
-
-## 8. Esempio completo
+## 5 · Configurazione rapida
 
 ```js
 app.use(apiRoute(Book, {
-  language: BrowserLanguage,
-  filter: [ (req) => !!req.user ],              // autenticazione
-  methods: [ 'GET','POST','PUT','DELETE' ],
-  fields: { Title:{ it:'Titolo' }, __v:{show:false} },
-  route: '/db/{collectionName}',
-  pagesManager: { limit:'?limit', page:'?page', maxResults:100 },
-  acceptedQueryFields: { get:['Title'] },
-  throwRefusedQueryFields: true,
-  options: {
-    get: {
-      middleware: ({ query }) => { /* side‑effects */ },
-      skimming: [ ({ document }) => (document.Title='Titolo: '+document.Title) ]
-    },
-    post: {
-      middleware: async ({ document }) => { document.Title=document.Title.toUpperCase() },
-      skimming: ({ document }) => { delete document._id; return true; },
-      fields: { __v:{show:true} }
-    },
-    put: {
-      middleware: ({ res }) => res.json({ ok:false })   // blocca qualunque PUT
-    }
-  }
+  methods: ["GET","POST"],          // abilita solo questi
+  route: "/db/books",               // percorso personalizzato
+  pagesManager: {                   // paginazione
+    limit: 20,                      // 20 risultati per pagina
+    page: "?p"                      // usa ?p=<num>
+  },
+  fields: {                         // alias/nascondi campi
+    Title: { it: "Titolo" },
+    __v:   { show: false }
+  },
+  acceptedQueryFields: ["Title"],   // whitelisting
+  throwRefusedQueryFields: true     // errore se arriva un altro parametro
 }));
 ```
 
 ---
 
-## 9. Diagramma di sintesi del flusso
+## 6 · Opzioni principali
 
-```text
-           ┌───►  Route/Method match? ──no──► next()
-Request ───┤
-           │
-           │yes
-           ▼
-     Esegui filter[]  ──false/err──► 400/early‑return
-           │
-           ▼
-    parseFilter()  (paginazione, acceptedFields, alias)
-           │
-           ▼
-  furtherOptions.{middleware}() ←──────┐
-           │                           │
-           ▼                           │
-   Operazione DB (find, save, …)       │
-           │                           │
-           ▼                           │
-   catchMongoDBError()                 │
-           │                           │
-           ▼                           │
-      skimming[]  (post‑query)         │
-           │                           │
-           ▼                           │
-   Rinomina / rimuovi campi            │
-           │                           │
-           ▼                           │
-        Response 200 JSON  ◄───────────┘
+| Chiave                  | Sintesi d’uso                                    | Esempio                                       |
+|-------------------------|--------------------------------------------------|-----------------------------------------------|
+| `methods`               | Limita i metodi ammessi                          | `["GET","POST"]`                              |
+| `route`                 | Override del percorso                            | `"/db/books"`                                 |
+| `filter`                | Controlli preliminari (auth, ACL…)               | `(req)=>!!req.user`                           |
+| `pagesManager`          | Paginazione automatica                           | `{ limit:"?lim", page:"?p", maxResults:100 }` |
+| `fields`                | Alias o nascondi campi in *output*               | `{ __v:{show:false}, Title:{it:"Titolo"} }`   |
+| `acceptedQueryFields`   | Whitelist di parametri di ricerca                | `["Title","Author"]`                          |
+| `throwRefusedQueryFields`| Errore se arriva un parametro non ammesso       | `true`                                        |
+| `options.<verb>.middleware` | Hook prima della persistenza                 | `async ({document})=>{ document.userId=req.user.id }` |
+| `options.<verb>.skimming`   | Filtro/trasformazione post‑query             | `({document})=>document.isPublic`             |
+
+---
+
+## 7 · Esempi pratici
+
+### 7.1 · Abilitare la traduzione dei campi
+
+```js
+app.use(apiRoute(Book, {
+  fields: {
+    Title: { it: "Titolo", es: "Título" },
+    Pages: { it: "Pagine", es: "Páginas" }
+  }
+}));
+```
+
+*Richiesta da browser con “Accept‑Language: it”*:
+
+```json
+{ "Titolo": "Il nome della rosa", "Pagine": 552 }
+```
+
+### 7.2 · Paginazione da query string
+
+```js
+pagesManager: { limit:"?limit", page:"?page", maxResults:50 }
+```
+
+```
+GET /api/books?Title=JS&limit=10&page=3
+```
+Restituisce i risultati 21 → 30.
+
+### 7.3 · Proteggere un endpoint con auth
+
+```js
+const isLoggedIn = req => !!req.user;
+
+app.use(apiRoute(Book, { filter: [isLoggedIn] }));
+```
+
+Se il filtro restituisce `false`, il client riceve:
+```json
+{ "ok": false, "status": 400, "error": "The request is invalid." }
 ```
 
 ---
 
-## Conclusioni  
+## 8 · Gestione degli errori
 
-`apiRoute` incapsula in un’unica funzione gran parte della **plumbing** necessaria per esporre risorse MongoDB in modo sicuro e internazionale.  
-Il suo utilizzo consente di:
+| Codice | Quando si verifica                     | Messaggio (EN)                       |
+|--------|----------------------------------------|--------------------------------------|
+| 1      | Un filtro restituisce `false`          | “The request is invalid.”            |
+| 2      | Parametro di query non ammesso         | “You cannot filter results by …”     |
+| 3–10   | Errori di validazione Mongoose         | Vedi tabella completa nel README     |
 
-* Ridurre la duplicazione di codice sui singoli endpoint.  
-* Avere messaggi d’errore coerenti e localizzabili.  
-* Applicare filtri, controlli e trasformazioni **senza** dover scrivere ogni volta la stessa logica.  
+I messaggi sono **localizzati**: basta aggiungere l’header `Accept‑Language: fr`, ecc.
 
-Grazie alla struttura modulare (callback `filter`, `middleware`, `skimming`) è comunque possibile intervenire in punti precisi della pipeline per introdurre regole di business o ottimizzazioni personalizzate.
+---
+
+## 9 · FAQ
+
+**· Posso usare più modelli?**  
+Sì, registra `apiRoute(Model1)` e `apiRoute(Model2)` separatamente.
+
+**· Serve per forza Mongoose?**  
+Sì, perché sfrutta la validazione e i metodi di query Mongoose.
+
+**· Posso sovrascrivere la risposta standard?**  
+Certo: dentro `options.<verb>.middleware` puoi chiamare `res.json()` e terminare la catena.
+
+---
+
+## 10 · Risorse aggiuntive
+
+* Repository GitHub (esempi completi) – *coming soon*  
+* Issue Tracker – per bug e feature request
+
+---
+
+Buon hacking! 🚀
