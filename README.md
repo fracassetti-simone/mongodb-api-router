@@ -140,7 +140,7 @@ Genera un middleware asincrono per Express, che espone un endpoint CRUD sul `mod
 | `fields`                  | Object                    | `null`                      | Mappatura campi per lingua e visibilità                                      |
 | `pagesManager`            | Object                    | `null`                      | `{ limit: '?limit', page: '?page', maxResults: Number }` per paginazione      |
 | `acceptedQueryFields`     | String[] \| Object        | Tutti i campi dello schema   | Campi ammessi per query su ciascun metodo                                   |
-| `throwRefusedQueryFields` | Boolean                   | `false`                     | Se `true`, rifiuta richieste con campi query non consentiti (400)            |
+| `throwRefusedQueryFields` | Boolean                   | `true`                     | Se `true`, rifiuta richieste con campi query non consentiti (400)            |
 | `language`                | String \| Symbol           | Lingua browser              | Forza una lingua specifica                                                    |
 | `options` _(nested)_      | Object                     | `{}`                        | Configurazioni per metodo: `skimming`, `middleware`, `fields`                |
 
