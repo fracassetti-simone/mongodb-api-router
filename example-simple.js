@@ -42,10 +42,25 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(apiRoute(Book, {
     language: BrowserLanguage,
-    filter: async ({ req, res }) => {
-        const authorizationToken = req.headers.Authorization;
-        if(!authorizationToken)
-            return res.status(200).sendMessage(9);
+    filter: [
+        ({ req, res }) => !!req.user,
+        async ({ req, res, query }) => {
+            // Intercettazione query per assicurarsi i permessi corretti
+            console.log(query);
+            query._id = '687644fdbc78aa569c8dee5b';
+            return true;
+        }
+    ],
+    fields: {
+        __v: { show: false }
+    },
+    options: {
+        get: {
+            skimming: async ({ req, res, document }) => {
+                const author = await Author.findById(document.Author);
+                return author.Nome === 'Luca';
+            }
+        }
     }
 }));
 app.use(apiRoute(Author));

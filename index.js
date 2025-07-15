@@ -201,56 +201,9 @@ function apiRoute(model, options = {}){
     else route = '/api/' + model.collection.name;
 
     return async function(req, res, next){
-        let lang;
-        if(language && language !== BrowserLanguage)
-            lang = language;
-        else
-            lang = req.acceptsLanguages()[0]?.split?.('-')?.[0]?.toLowerCase?.() || 'en';
-
-        res.sendMessage = (number, replace) => {
-            const ok = res.statusCode >= 200 && res.statusCode < 300;
-            res.json({ ok, status: res.statusCode, [ ok ? 'message': 'error' ]: message(number, lang, replace) });
-        }
-
-        // Method check
-        if(!methods.includes(req.method))
-            return next();
-
-        // URI Check
-        if(req.path !== route)
-            return next();
-
-        for(const func of filter){
-            const result = await func({ req, res, next });
-            if(res.headersSent)
-                return;
-            if(result !== true){
-                if(result === false)
-                    return res.status(403).json({ ok: false, status: 403, error: message(11, lang) });
-                if(typeof result === 'object')
-                    return res.status(result?.status || 403).json(result);
-                return res.status(403).json({ ok: false, status: 403, error: result });
-            }
-        }
-
-        if(Array.isArray(acceptedQueryFields))
-            acceptedQueryFields = {
-                GET: acceptedQueryFields,
-                POST: acceptedQueryFields,
-                PUT: acceptedQueryFields,
-                DELETE: acceptedQueryFields
-            }
-
-        let queryFields = acceptedQueryFields?.[req.method] || acceptedQueryFields?.[req.method.toLowerCase()] || Object.keys(model.schema.paths);
-
-        const ignoreFields = [];
-        let limit, page;
-        if(pagesManager){
-            limit = pagesManager.limit;
-            page = pagesManager.page;
-        }
-
         const parseFilter = (object, fields) => {
+            if(!object)
+                return {};
             // Pages manager
             if(pagesManager){
                 if(typeof pagesManager !== 'object')
@@ -306,43 +259,6 @@ function apiRoute(model, options = {}){
             return query;
         }
 
-        const catchMongoDBError = error => {
-            if(error.name === 'ValidationError'){
-                const errors = [];
-
-                for(let field in error.errors){
-                    const fieldError = error.errors[field];
-                    console.log(`Campo: ${field}`);
-                    console.log(`Tipo errore: ${fieldError.kind}`);
-                    console.log(`Messaggio: ${fieldError.message}`);
-                    
-                    let errorMessage;
-                    const translatedField = customFields[field][lang] || field;
-                    if(fieldError.kind === 'required')
-                        errorMessage = message(3, lang, { target: translatedField });
-                    else if(fieldError.kind === 'minlength')
-                        errorMessage = message(4, lang, { target: translatedField });
-                    else if(fieldError.kind === 'maxlength')
-                        errorMessage = message(5, lang, { target: translatedField });
-                    else if(fieldError.kind === 'min')
-                        errorMessage = message(6, lang, { target: translatedField });
-                    else if(fieldError.kind === 'max')
-                        errorMessage = message(7, lang, { target: translatedField });
-                    else if(fieldError.kind === 'enum')
-                        errorMessage = message(8, lang, { target: translatedField });
-                    else if(fieldError.kind === 'regexp')
-                        errorMessage = message(9, lang, { target: translatedField });
-                    else if(fieldError.kind === 'cast')
-                        errorMessage = message(10, lang, { target: translatedField });
-                    
-
-                    errors.push({ target: field, errorMessage })
-                }
-
-                return res.status(400).json({ ok: false, status: 400, errors });
-            }
-        }
-
         // Further options
         const furtherOptions = options.options?.[req.method] || options.options?.[req.method.toLowerCase()] || {};
 
@@ -392,7 +308,8 @@ function apiRoute(model, options = {}){
                     }
                 }
         }
-        
+
+
         let customFields = { ...(fields || {}), ...(furtherOptions?.fields || {}) };
         if(!Object.keys(customFields).length)
             customFields = null;
@@ -401,8 +318,91 @@ function apiRoute(model, options = {}){
         if(req.method !== 'PUT')
             query = parseFilter([ 'DELETE', 'GET' ].includes(req.method) ? req.query : req.body, customFields);
 
-        if(query === null)
-            return;
+        let lang;
+        if(language && language !== BrowserLanguage)
+            lang = language;
+        else
+            lang = req.acceptsLanguages()[0]?.split?.('-')?.[0]?.toLowerCase?.() || 'en';
+
+        res.sendMessage = (number, replace) => {
+            const ok = res.statusCode >= 200 && res.statusCode < 300;
+            res.json({ ok, status: res.statusCode, [ ok ? 'message': 'error' ]: message(number, lang, replace) });
+        }
+
+        // Method check
+        if(!methods.includes(req.method))
+            return next();
+
+        // URI Check
+        if(req.path !== route)
+            return next();
+
+        for(const func of filter){
+            const result = await func({ req, res, next, query });
+            if(res.headersSent)
+                return;
+            if(result !== true){
+                if(result === false)
+                    return res.status(403).json({ ok: false, status: 403, error: message(11, lang) });
+                if(typeof result === 'object')
+                    return res.status(result?.status || 403).json(result);
+                return res.status(403).json({ ok: false, status: 403, error: result });
+            }
+        }
+
+        if(Array.isArray(acceptedQueryFields))
+            acceptedQueryFields = {
+                GET: acceptedQueryFields,
+                POST: acceptedQueryFields,
+                PUT: acceptedQueryFields,
+                DELETE: acceptedQueryFields
+            }
+
+        let queryFields = acceptedQueryFields?.[req.method] || acceptedQueryFields?.[req.method.toLowerCase()] || Object.keys(model.schema.paths);
+
+        const ignoreFields = [];
+        let limit, page;
+        if(pagesManager){
+            limit = pagesManager.limit;
+            page = pagesManager.page;
+        }
+
+        const catchMongoDBError = error => {
+            if(error.name === 'ValidationError'){
+                const errors = [];
+
+                for(let field in error.errors){
+                    const fieldError = error.errors[field];
+                    console.log(`Campo: ${field}`);
+                    console.log(`Tipo errore: ${fieldError.kind}`);
+                    console.log(`Messaggio: ${fieldError.message}`);
+                    
+                    let errorMessage;
+                    const translatedField = customFields[field][lang] || field;
+                    if(fieldError.kind === 'required')
+                        errorMessage = message(3, lang, { target: translatedField });
+                    else if(fieldError.kind === 'minlength')
+                        errorMessage = message(4, lang, { target: translatedField });
+                    else if(fieldError.kind === 'maxlength')
+                        errorMessage = message(5, lang, { target: translatedField });
+                    else if(fieldError.kind === 'min')
+                        errorMessage = message(6, lang, { target: translatedField });
+                    else if(fieldError.kind === 'max')
+                        errorMessage = message(7, lang, { target: translatedField });
+                    else if(fieldError.kind === 'enum')
+                        errorMessage = message(8, lang, { target: translatedField });
+                    else if(fieldError.kind === 'regexp')
+                        errorMessage = message(9, lang, { target: translatedField });
+                    else if(fieldError.kind === 'cast')
+                        errorMessage = message(10, lang, { target: translatedField });
+                    
+
+                    errors.push({ target: field, errorMessage })
+                }
+
+                return res.status(400).json({ ok: false, status: 400, errors });
+            }
+        }
 
         if(req.method === 'GET'){
             // GET

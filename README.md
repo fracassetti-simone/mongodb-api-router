@@ -1,426 +1,342 @@
-# 📚 Documentazione Estesa del Progetto API Express/Mongoose Multilingua
+# 📦 Documentazione di `index.js`
+
+Benvenuti nella documentazione dettagliata di **index.js**, un modulo che fornisce una factory per creare middleware Express/Mongoose con supporto a CRUD, localizzazione, paginazione, filtri e molto altro! 🚀
+
+---
 
 ## Indice
 
-1. [Panoramica Generale](#panoramica-generale)
-2. [Architettura dei File](#architettura-dei-file)
-3. [index.js — Middleware API Express/Mongoose Multilingua](#indexjs)
-    - [Funzionalità](#funzionalità)
-    - [Gestione Messaggi Multilingua](#gestione-messaggi-multilingua)
-    - [Signature e Parametri](#signature-e-parametri)
-    - [Dettaglio Opzioni: "fields"](#dettaglio-opzioni-fields)
-    - [Flusso Principale](#flusso-principale)
-    - [Eccezioni e Gestione Errori](#eccezioni-e-gestione-errori)
-    - [Diagramma dei Componenti Principali](#diagramma-dei-componenti-principali)
-4. [example.js — Esempio Avanzato](#examplejs)
-    - [Schema e Relazioni](#schema-e-relazioni)
-    - [Configurazione Avanzata del Middleware](#configurazione-avanzata-del-middleware)
-    - [Struttura Dettagliata di "fields" nell'Esempio](#struttura-dettagliata-di-fields-nellesempio)
-    - [Esempi di Middleware e Skimming](#esempi-di-middleware-e-skimming)
-    - [EndPoint API](#endpoint-api)
-    - [Diagramma delle Relazioni tra Modelli](#diagramma-delle-relazioni-tra-modelli)
-5. [example-simple.js — Esempio Semplificato](#example-simplejs)
-    - [Funzionalità Principali](#funzionalità-principali)
-    - [Esempio di Configurazione Minima](#esempio-di-configurazione-minima)
-6. [Conclusioni](#conclusioni)
+1. [Panoramica generale](#1-panoramica-generale)  
+2. [Dipendenze](#2-dipendenze)  
+3. [Messaggi multilingua 🌐](#3-messaggi-multilingua-🌐)  
+4. [Utilità di localizzazione](#4-utilità-di-localizzazione)  
+5. [Funzione principale: `apiRoute`](#5-funzione-principale-apiroute)  
+   5.1. [Parametri di ingresso](#51-parametri-di-ingresso)  
+   5.2. [Validazione e normalizzazione](#52-validazione-e-normalizzazione)  
+   5.3. [Costruzione del percorso (route)](#53-costruzione-del-percorso-route)  
+   5.4. [Middleware generato](#54-middleware-generato)  
+     - 5.4.1. [`parseFilter`](#541-parsefilter)  
+     - 5.4.2. [`skimming` & `middleware` personalizzati](#542-skimming--middleware-personalizzati)  
+     - 5.4.3. `res.sendMessage`  
+     - 5.4.4. Controlli di metodo e percorso  
+     - 5.4.5. Filtri di autorizzazione  
+     - 5.4.6. Gestione di `acceptedQueryFields`  
+     - 5.4.7. Paginazione (`pagesManager`)  
+     - 5.4.8. [`catchMongoDBError`](#548-catchmongodberror)  
+     - 5.4.9. Gestione delle operazioni CRUD  
+6. [Diagramma di flusso per `GET`](#6-diagramma-di-flusso-per-get)  
+7. [Esempi di utilizzo](#7-esempi-di-utilizzo)  
+8. [Tipi di risposta & gestione errori](#8-tipi-di-risposta--gestione-errori)  
+9. [Export del modulo](#9-export-del-modulo)  
 
 ---
 
-## Panoramica Generale
+## 1. Panoramica generale
 
-Questa libreria fornisce un **middleware Express** per la generazione automatica di rotte RESTful su modelli Mongoose, includendo:
-- Gestione multilingua dei messaggi di errore (🇮🇹 🇬🇧 🇪🇸 🇫🇷 🇩🇪 ecc.)
-- Validazione dinamica dei parametri di query e body
-- Middleware personalizzabili per ogni metodo HTTP (GET, POST, PUT, DELETE)
-- Gestione della paginazione
-- Traduzione dinamica dei campi degli schemi
-- Possibilità di “skimming” e manipolazione dati prima della risposta
+Questo file esporta:
 
----
-
-## Architettura dei File
-
-| File                  | Ruolo                                                                 |
-|-----------------------|-----------------------------------------------------------------------|
-| `index.js`            | Middleware principale, gestione logica API, errori e traduzioni       |
-| `example.js`          | Esempio d’uso avanzato: modelli relazionati, middleware, skimming     |
-| `example-simple.js`   | Esempio d’uso minimale: API CRUD rapida su due modelli                |
+- Una costante `BrowserLanguage` (Symbol)  
+- Una funzione `defineMessage` per aggiungere/override di messaggi multilingua  
+- La funzione di default `apiRoute(model, options)` che genera un middleware Express per esporre un’API RESTful completa (CRUD) su un modello Mongoose, con:  
+  - Filtri di autorizzazione  
+  - Gestione dei metodi HTTP consentiti  
+  - Localizzazione dei messaggi di errore  
+  - Paginazione  
+  - Mapping e rinomina dinamica di campi  
+  - Hook personalizzati (_skimming_ e _middleware_)  
 
 ---
 
-## index.js
+## 2. Dipendenze
 
-### Funzionalità
-
-- **Espone** una funzione `apiRoute(model, options)` che genera un middleware Express per CRUD RESTful su un modello Mongoose.
-- **Gestione automatica degli errori** e messaggi in più lingue.
-- **Paginazione**, filtro, validazione parametri query/body, personalizzazione campi restituiti.
-- **Estensione tramite opzioni**: middleware, skimming, fields, acceptedQueryFields, ecc.
-- **Costruzione dinamica della rotta** con possibilità di personalizzare tramite `{modelName}` e `{collectionName}`.
-
-### Gestione Messaggi Multilingua
-
-Una mappa `messages` contiene errori comuni in molte lingue. La funzione `message(numero, req, replace)` gestisce il recupero e la sostituzione dinamica dei placeholder.
-
-#### Esempio
+| Modulo       | Scopo                                              |
+|--------------|----------------------------------------------------|
+| `mongoose`   | Modellazione e query su MongoDB                    |
+| `express`    | Creazione di middleware HTTP                       |
+| `body-parser`| Parsing del corpo delle request (JSON)             |
+| `colors`     | Colorazione dei log in console                     |
 
 ```js
-message(3, req, { target: "Nome" });
-// "Il campo «Nome» è obbligatorio." (in base alla lingua del browser)
+import mongoose       from 'mongoose';
+import express        from 'express';
+import bodyParser     from 'body-parser';
+import 'colors';
 ```
 
-> ⚠️ **Nota**: La lingua viene inferita da `req.acceptsLanguages()`.
-
-### Signature e Parametri
-
-```js
-function apiRoute(model, options = {}) => (req, res, next) => { ... }
-```
-
-| Parametro          | Tipo            | Descrizione                                              |
-|--------------------|-----------------|----------------------------------------------------------|
-| `model`            | Mongoose Model  | Il modello su cui esporre le rotte                       |
-| `options`          | Oggetto         | Configurazione avanzata (vedi tabella sotto)             |
-
-#### Opzioni Avanzate
-
-| Opzione                  | Tipo                          | Descrizione                                                                 |
-|--------------------------|-------------------------------|-----------------------------------------------------------------------------|
-| `filter`                 | Function/Array                | Funzione/i di filtro per autorizzazione/validazione                         |
-| `methods`                | Array                         | Metodi HTTP permessi (default: tutti)                                       |
-| [`fields`](#dettaglio-opzioni-fields) | Oggetto        | Traduzioni/visibilità dei campi restituiti                                  |
-| `route`                  | String                        | Percorso personalizzato (usa `{modelName}`, `{collectionName}`)             |
-| `pagesManager`           | Oggetto                       | Configurazione paginazione (`limit`, `page`, `maxResults`)                  |
-| `acceptedQueryFields`    | Oggetto/Array                 | Campi accettati in query per metodo                                         |
-| `throwRefusedQueryFields`| Boolean                       | Restituisce errore se parametri non permessi (default: false)               |
-| `language`               | String/Symbol                 | Forza lingua (o usa BrowserLanguage per autodetect)                         |
-| `options`                | Oggetto per metodo            | Middleware/skimming/fields personalizzati per metodo                        |
-
 ---
 
-### Dettaglio Opzioni: "fields"
+## 3. Messaggi multilingua 🌐
 
-L’opzione `fields` permette di:
-- **Tradurre i nomi dei campi** nei risultati in base alla lingua richiesta
-- **Nascondere campi** dalla risposta JSON
-- **Aggiungere logica avanzata** (es: mostrare solo in certe condizioni, se implementato)
+L’oggetto `messages` definisce traduzioni per codici di errore numerici (1…11). È possibile aggiungere o sovrascrivere messaggi tramite `defineMessage`.
 
-#### Struttura di `fields`
+Estratto per i primi codici:
 
 ```js
-fields: {
-  <NomeCampo>: {
-    <codiceLingua>: <NomeTradotto>,
-    show: <boolean> // opzionale, default true
+const messages = {
+  __userMessages: {},
+  1: {
+    it: 'La richiesta non è valida.',
+    en: 'The request is invalid.',
+    es: 'La solicitud no es válida.',
+    // … altre lingue …
   },
-  ...
-}
+  2: {
+    it: 'Non puoi filtrare i risultati con il parametro «{key}».',
+    en: 'You cannot filter results by the “{key}” parameter.',
+    // … altre lingue …
+  },
+  // … fino al codice 11 …
+};
 ```
-
-**Esempi pratici:**
-
-```js
-fields: {
-  Title: { it: "Titolo", en: "Title" },    // "Title" viene chiamato "Titolo" per lingua italiana
-  __v: { show: false },                    // Il campo "__v" non viene mai restituito
-  Nome: { it: "Nome", en: "Name", show: true }
-}
-```
-
-#### Spiegazione delle proprietà
-
-| Proprietà           | Tipo      | Descrizione                                                         |
-|---------------------|-----------|---------------------------------------------------------------------|
-| `<codiceLingua>`    | String    | Codice lingua (es: `it`, `en`, `fr`, ecc.), imposta alias del campo |
-| `show`              | Boolean   | Se `false`, il campo viene rimosso dalla risposta JSON              |
-
-##### Esempio Risposta API con `fields` configurato
-
-Supponendo:
-
-```
-fields: {
-  Title: { it: "Titolo" },
-  __v: { show: false }
-}
-```
-
-**Risposta per lingua italiana**
-```json
-{
-  "books": [
-    {
-      "Titolo": "Il nome della rosa",
-      "Author": "..."
-    }
-  ]
-}
-```
-
-**Risposta per lingua inglese (o default)**
-```json
-{
-  "books": [
-    {
-      "Title": "Il nome della rosa",
-      "Author": "..."
-    }
-  ]
-}
-```
-
-**Nota:** Se un campo è impostato con `show: false`, non apparirà nella risposta.
 
 ---
 
-### Flusso Principale
+## 4. Utilità di localizzazione
 
-Il middleware, una volta montato, gestisce automaticamente tutte le richieste CRUD verso la rotta specificata:
+🔧 **BrowserLanguage**  
+Un `Symbol('BrowserLanguage')` usato per distinguere tra lingua forzata e lingua determinata dalle preferenze del client.
+
+✨ **defineMessage(number, value)**  
+Aggiunge o sovrascrive un messaggio utente:
+- `number` (Number): codice del messaggio  
+- `value` (Object): mappa `lang → string`
+
+🔍 **message(number, lang, replace = {})**  
+Restituisce il messaggio localizzato, applicando i placeholder:
+- Fallback a inglese se la lingua non esiste
+- Sostituisce `{key}` con `replace[key]`
+
+```js
+// Esempio
+defineMessage(12, { it: 'Utente non trovato.', en: 'User not found.' });
+message(12, 'it'); // → 'Utente non trovato.'
+```
+
+---
+
+## 5. Funzione principale: `apiRoute(model, options)`
+
+```js
+function apiRoute(model, options = {}) { /* ... */ }
+export default apiRoute;
+```
+
+Genera un middleware asincrono per Express, che espone un endpoint CRUD sul `model` Mongoose.
+
+### 5.1 Parametri di ingresso
+
+| Parametro  | Tipo                        | Default                                             | Descrizione |
+|------------|-----------------------------|-----------------------------------------------------|-------------|
+| `model`    | `mongoose.Model`            | **REQUIRED**                                        | Modello su cui operare |
+| `options`  | `Object`                    | `{}`                                                | Configurazione (vedi sotto) |
+
+**Chiavi di `options`:**
+
+| Chiave                    | Tipo                      | Default                     | Descrizione                                                                 |
+|---------------------------|---------------------------|-----------------------------|-----------------------------------------------------------------------------|
+| `filter`                  | Function \| Function[]    | `[]`                        | Funzioni di autorizzazione personalizzate                                    |
+| `methods`                 | String[]                  | `['PUT','POST','GET','DELETE']` | Metodi HTTP consentiti                                                       |
+| `route`                   | String                    | `'/api/{collectionName}'`   | URL dell’endpoint (supporta `{modelName}` e `{collectionName}`)              |
+| `fields`                  | Object                    | `null`                      | Mappatura campi per lingua e visibilità                                      |
+| `pagesManager`            | Object                    | `null`                      | `{ limit: '?limit', page: '?page', maxResults: Number }` per paginazione      |
+| `acceptedQueryFields`     | String[] \| Object        | Tutti i campi dello schema   | Campi ammessi per query su ciascun metodo                                   |
+| `throwRefusedQueryFields` | Boolean                   | `false`                     | Se `true`, rifiuta richieste con campi query non consentiti (400)            |
+| `language`                | String \| Symbol           | Lingua browser              | Forza una lingua specifica                                                    |
+| `options` _(nested)_      | Object                     | `{}`                        | Configurazioni per metodo: `skimming`, `middleware`, `fields`                |
+
+---
+
+### 5.2 Validazione e normalizzazione
+
+- **`filter`**: deve essere funzione o array di funzioni, altrimenti lancia un `Error`.
+- **`methods`**: array di stringhe, valide solo quelle in `allowedMethods`.
+- **`route`**: se specificato, deve essere stringa e supportare i placeholder `{modelName}`, `{collectionName}`.
+
+---
+
+### 5.3 Costruzione del percorso (route)
+
+```js
+if(route) {
+  route = route
+    .replaceAll('{modelName}', model.modelName)
+    .replaceAll('{collectionName}', model.collection.name);
+} else {
+  route = '/api/' + model.collection.name;
+}
+```
+
+---
+
+### 5.4 Middleware generato
+
+Il middleware restituito gestisce tutte le fasi di una chiamata API:
+
+#### 5.4.1 parseFilter
+
+```js
+const parseFilter = (object, fields) => {
+  // - Traduzione nomi campi (fields)
+  // - Rimozione campi non ammessi
+  // - Paginazione (pagesManager)
+  // - Errore 400 se throwRefusedQueryFields
+};
+```
+
+- **Input**: `object` (req.query o req.body), `fields` (mappatura custom)
+- **Output**: oggetto filtro compatibile con Mongoose
+- Gestisce:
+  - Rinomina campi custom per lingua
+  - Controllo `acceptedQueryFields`
+  - Parametri `limit` e `page` se `pagesManager` attivo
+
+#### 5.4.2 skimming & middleware personalizzati
+
+- **Skimming**: filtra i risultati dopo la query  
+- **Middleware**: hook asincrono che riceve `{ document, req, res, next, query }` e può modificarli
+
+#### 5.4.3 res.sendMessage
+
+Aggiunge al `res` un metodo:
+
+```js
+res.sendMessage = (number, replace) => {
+  const ok = res.statusCode >= 200 && res.statusCode < 300;
+  res.json({
+    ok,
+    status: res.statusCode,
+    [ ok ? 'message' : 'error' ]: message(number, lang, replace)
+  });
+};
+```
+
+Usato per risposte rapide con solo `ok`, `status` e messaggio tradotto.
+
+#### 5.4.4 Controlli di metodo e percorso
+
+- Se `req.method` non è in `methods`, passa il controllo con `next()`
+- Se `req.path` non coincide con `route`, passa con `next()`
+
+#### 5.4.5 Filtri di autorizzazione
+
+Per ogni funzione in `filter`, viene invocata con `{ req, res, next, query }`:
+
+- Se restituisce `true`: approvato  
+- `false`: **403 Forbidden** con messaggio 11  
+- Oggetto: risposta custom con `status` e JSON  
+
+#### 5.4.6 Gestione di `acceptedQueryFields`
+
+Trasforma `acceptedQueryFields` in mappa per ogni metodo, quindi controlla `req.query` (GET) o `req.body` (POST/PUT/DELETE).
+
+#### 5.4.7 Paginazione (`pagesManager`)
+
+Se attivo, interpreta parametri `?limit` e `?page`, applica:
+- `skip((page-1)*limit).limit(limit)`
+- Massimo `maxResults`
+
+#### 5.4.8 catchMongoDBError
+
+```js
+if(error.name === 'ValidationError') {
+  // Mappa gli errori Mongoose in array di
+  // { target: field, errorMessage: string }
+  // con messaggi tradotti (codici 3–10)
+}
+```
+
+In caso di validazione, restituisce **400 Bad Request** con lista di errori dettagliati.
+
+#### 5.4.9 Gestione delle operazioni CRUD
+
+| Metodo | Azione                                                                                                                                             |
+|--------|----------------------------------------------------------------------------------------------------------------------------------------------------|
+| GET    | - `model.find(query)` (con lean, sort e paginazione)  <br>- Skimming  <br>- Rinomina/nasconde campi  <br>- Risponde `{ ok: true, [collection]: Array }` |
+| POST   | - Nuovo documento `new model(query)`  <br>- Middleware  <br>- `save()` + `catchMongoDBError`  <br>- Skimming + rinomina  <br>- `{ ok: true, document }` |
+| PUT    | - `findOneAndUpdate(query, set)`  <br>- Recupera documento aggiornato  <br>- Skimming + rinomina  <br>- `{ ok: true, [modelName]: document }`         |
+| DELETE | - `find()` + (skimming → deleteOne per risultato) **o** `deleteMany(query)`  <br>- `{ ok: true }`                                                    |
+
+---
+
+## 6. Diagramma di flusso per `GET`
 
 ```mermaid
-flowchart TD
-  subgraph API Route REST
-    Start["Richiesta HTTP"] --> RouteCheck{"Route e Metodo OK?"}
-    RouteCheck -- NO --> End["next()"]
-    RouteCheck -- SI --> Filtro["Esegui filtri"]
-    Filtro -- KO --> Errori["Restituisci errore 403/400"]
-    Filtro -- OK --> QueryParse["Parsing query/body"]
-    QueryParse --> Metodo{"Metodo HTTP?"}
-    Metodo -- GET --> GetFlow
-    Metodo -- POST --> PostFlow
-    Metodo -- PUT --> PutFlow
-    Metodo -- DELETE --> DeleteFlow
-    anyMethod --> EndOk["Risposta JSON"]
-  end
+sequenceDiagram
+    participant C as Client
+    participant E as Express-Router
+    participant M as apiRoute
+    participant DB as MongoDB
+    participant R as Response
 
-  GetFlow["Trova documenti, applica middleware/skimming, traduci campi"]
-  PostFlow["Crea documento, middleware/skimming, traduci campi"]
-  PutFlow["Aggiorna documento con query/set, middleware/skimming, traduci campi"]
-  DeleteFlow["Cancella documento/i, eventuale skimming"]
-  Errori --> End
-  GetFlow --> EndOk
-  PostFlow --> EndOk
-  PutFlow --> EndOk
-  DeleteFlow --> EndOk
+    C->>E: GET /api/collection?param=val
+    E->>M: middleware(req, res, next)
+    M->>M: parseFilter & check autorizzazioni
+    M->>DB: model.find(query).lean()
+    DB-->>M: results[]
+    M->>M: skimming + rinomina campi
+    M->>R: res.json({ ok: true, collection: results })
+    R-->>C: JSON
 ```
 
 ---
 
-### Eccezioni e Gestione Errori
-
-**Eccezioni principali sollevate:**
-- `filter` non è funzione o array di funzioni 👉 `Error`
-- `methods` non è array o contiene valori non consentiti 👉 `Error`
-- `route` non è stringa 👉 `Error`
-- Errori Mongoose (validation, cast, enum, ecc.) 👉 Risposta 400 dettagliata e tradotta
-
-**Restituisce sempre** risposta JSON in caso di errore, con struttura:
-```json
-{ "ok": false, "status": 400, "error": "Messaggio tradotto", ... }
-```
-
----
-
-### Diagramma dei Componenti Principali
-
-```mermaid
-graph TB
-  API_Route["apiRoute(model, options)"]
-  ExpressApp["Express Application"]
-  MongoModel["Mongoose Model"]
-  API_Route --> ExpressApp
-  MongoModel --> API_Route
-  BrowserLanguage --> API_Route
-```
-
----
-
-## example.js
-
-### Schema e Relazioni
-
-Due modelli collegati: **Author** e **Book**. Book ha una reference a Author.
-
-```mermaid
-erDiagram
-  AUTHOR {
-    String Nome
-    String Cognome
-  }
-  BOOK {
-    String Title
-    ObjectId Author
-  }
-  AUTHOR ||..o{ BOOK : "ha scritto"
-```
-
-#### Codice
+## 7. Esempi di utilizzo
 
 ```js
-const authorSchema = new mongoose.Schema({ Nome: { type: String, minlength: 10 }, Cognome: String });
-const Author = mongoose.model('Author', authorSchema);
+import express   from 'express';
+import apiRoute  from './index.js';
+import User      from './models/User.js';
 
-const bookSchema = new mongoose.Schema({ Title: { type: String, required: true }, Author: { type: mongoose.Types.ObjectId, ref: 'Author' } });
-const Book = mongoose.model('Book', bookSchema);
-```
+const app = express();
+app.use(express.json());
 
----
-
-### Configurazione Avanzata del Middleware
-
-Qui viene mostrato un uso **ricco** di tutte le opzioni del middleware:
-
-- **Gestione lingua**: auto da browser (`BrowserLanguage`)
-- **Filtri**: array di funzioni (qui sempre `true`)
-- **Metodi**: abilitati tutti i CRUD
-- **Traduzione campi**: `Title` → `"Titolo"` in italiano
-- **Esclusione campi**: `__v: { show: false }`
-- **Rotta personalizzata**: `/db/{collectionName}`
-- **Paginazione**: personalizzabile da query, max 100 risultati
-- **Campi query accettati**: solo `Title` per GET
-- **Middleware/skimming per ogni metodo**:
-    - GET: modifica dati in risposta
-    - POST: trasforma titolo in maiuscolo, elimina `_id` in risposta
-    - PUT: risposta custom JSON
-
----
-
-### Struttura Dettagliata di "fields" nell'Esempio
-
-Nell’esempio avanzato, la proprietà `fields` è così strutturata:
-
-```js
-fields: {
-  Title: { it: 'Titolo' },    // Solo per la lingua italiana, il campo "Title" diventa "Titolo"
-  __v: { show: false }        // Il campo "__v" viene nascosto in tutte le risposte
-}
-```
-
-**Significato:**
-- `"Title: { it: 'Titolo' }"`:  
-  Quando la lingua accettata è italiana, il campo `"Title"` verrà restituito come `"Titolo"`. In tutte le altre lingue, il campo rimane `"Title"` (salvo altre traduzioni specificate).
-- `"__v: { show: false }"`:  
-  Il campo di versione interna di Mongoose non verrà mai restituito nella risposta API.
-
-Puoi aggiungere altre lingue o configurazioni così:
-
-```js
-fields: {
-  Title: { it: 'Titolo', en: 'Title', fr: 'Titre' },
-  __v: { show: false },
-  Author: { it: 'Autore', show: true }
-}
-```
-In questo modo il campo `"Title"` sarà adattato secondo la lingua della richiesta.
-
----
-
-### Esempi di Middleware e Skimming
-
-```js
-options: {
-  get: {
-    middleware: ({ query }) => { /* manipola query prima della ricerca */ },
-    skimming: [ 
-      ({ req, res, next, document }) => {
-        document.Title = "Titolo: " + document.Title; return true;
-      },
-      ({ req, res, next, document }) => {
-        return document.Title.length > 1;
+app.use(
+  apiRoute(User, {
+    methods: ['GET','POST','PUT','DELETE'],
+    route: '/api/users',
+    acceptedQueryFields: ['name','email','age'],
+    throwRefusedQueryFields: true,
+    pagesManager: { limit: '?limit', page: '?page', maxResults: 100 },
+    fields: {
+      name:  { it: 'nome', en: 'name' },
+      email: { it: 'email', en: 'email' }
+    },
+    filter: [
+      async ({ req }) => {
+        // Esempio di autorizzazione
+        return req.user?.isAdmin === true;
       }
     ]
-  },
-  post: {
-    middleware: [ async ({ req, res, next, document }) => {
-      document.Title = document.Title.toUpperCase();
-    }],
-    skimming: ({ document }) => { delete document._id; return true; },
-    fields: { __v: { show: true } }
-  },
-  put: {
-    middleware: ({ res, document }) => { res.json({ ok: false }) }
-  }
-}
+  })
+);
+
+app.listen(3000, () => console.log('Server avviato 🚀'));
 ```
 
 ---
 
-### EndPoint API
+## 8. Tipi di risposta & gestione errori
 
-- **GET /db/books** — Ricerca libri, con paginazione e filtro permessi
-- **POST /db/books** — Crea libro, trasforma titolo
-- **PUT /db/books** — Aggiorna libro, middleware personalizzato
-- **DELETE /db/books** — Cancella secondo filtro
-
----
-
-### Diagramma delle Relazioni tra Modelli
-
-Vedi sopra: [Schema e Relazioni](#schema-e-relazioni)
+| Codice HTTP | Body                                                               |
+|-------------|--------------------------------------------------------------------|
+| 200/201     | `{ ok: true, ... }` (array o documento)                           |
+| 400         | `{ ok: false, status: 400, errors: [ { target, errorMessage } ] }`<br>oppure `<  errors  >` per campi non ammessi              |
+| 403         | `{ ok: false, status: 403, error: string }`                        |
+| Altro       | Passa al `next()` per gestioni esterne (es. 404, 405, ecc.)        |
 
 ---
 
-## example-simple.js
-
-### Funzionalità Principali
-
-- Esempio **minimale** di uso del middleware:
-    - Rotte CRUD complete su Book e Author
-    - Si dimostra come montare più istanze, ognuna su un modello diverso
-
-### Esempio di Configurazione Minima
+## 9. Export del modulo
 
 ```js
-app.use(apiRoute(Book, { filter: ({ req, res }) => false })); // blocca tutto su Book
-app.use(apiRoute(Author)); // CRUD completo e automatico su Author
+export { BrowserLanguage, defineMessage };
+export default apiRoute;
 ```
 
----
-
-## Conclusioni
-
-Questa libreria offre una soluzione potente e flessibile per la creazione di API RESTful multilingua su modelli Mongoose, con un focus su:
-- **Esperienza utente internazionale** (messaggi tradotti)
-- **Sicurezza e validazione** tramite filtri e controllo campi
-- **Facilità di estensione** per middleware, skimming, campi personalizzati
-- **Adattabilità**: dalla configurazione minima a quella enterprise
-
-### Esempio di risposta errore validato
-
-```json
-{
-  "ok": false,
-  "status": 400,
-  "errors": [
-    {
-      "target": "Nome",
-      "errorMessage": "Il campo «Nome» è obbligatorio."
-    }
-  ]
-}
-```
+- **BrowserLanguage**: `Symbol` per controllo lingua  
+- **defineMessage**: aggiungi/sovrascrivi messaggi  
+- **apiRoute** _(default)_: factory per il middleware CRUD  
 
 ---
 
-## FAQ
-
-- **Cosa succede se il browser invia una lingua non prevista?**  
-  → Viene usata la lingua inglese di default.
-
-- **Posso gestire più modelli contemporaneamente?**  
-  → Sì, monta più volte il middleware con modelli diversi.
-
-- **Posso modificare i dati in risposta?**  
-  → Usa i middleware/skimming nelle opzioni avanzate.
-
----
-
-## 📝 Note Finali
-
-- Tutte le configurazioni avanzate sono **opzionali**.
-- Il middleware è idempotente: non risponde se la rotta/metodo non corrisponde.
-- Ogni metodo HTTP può avere middleware, skimming e fields separati.
-
----
-
-**Per domande o personalizzazioni, consulta la documentazione del codice o contatta l’autore!** 🚀
+🎉 _Fine della documentazione di **index.js**!_ Espero che questa guida vi aiuti a integrare in modo semplice e flessibile le vostre API Express/Mongoose. Buon coding! 👩‍💻👨‍💻
