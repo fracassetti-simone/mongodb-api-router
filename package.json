@@ -1,0 +1,34 @@
+{
+  "name": "mongodb-api-router",
+  "version": "1.0.0",
+  "description": "MongoDB API Router",
+  "keywords": [
+    "mongodb",
+    "router",
+    "express",
+    "server",
+    "http"
+  ],
+  "homepage": "https://github.com/fracassetti-simone/mongodb-api-router#readme",
+  "bugs": {
+    "url": "https://github.com/fracassetti-simone/mongodb-api-router/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fracassetti-simone/mongodb-api-router.git"
+  },
+  "license": "Unlicense",
+  "author": "Simone Fracassetti",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "colors": "^1.4.0",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "mongoose": "^8.16.3"
+  }
+}
