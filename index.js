@@ -176,7 +176,7 @@ function apiRoute(model, options = {}){
 
     let { filter, methods, fields, route, pagesManager, acceptedQueryFields, throwRefusedQueryFields, language } = options;
     if(throwRefusedQueryFields === undefined)
-        throwRefusedQueryFields= true;
+        throwRefusedQueryFields = true;
 
     // Filter
     if(typeof filter === 'function')
