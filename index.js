@@ -163,10 +163,9 @@ const messages = {
 
 const BrowserLanguage = Symbol('BrowserLanguage');
 
+const defineMessage = (number, value) => messages.__userMessages[number] = value;
 
-const message = (number, req, replace = {}) => {
-    let [ lang ] = req.acceptsLanguages();
-    lang = lang?.split?.('-')?.[0]?.toLowerCase?.();
+const message = (number, lang, replace = {}) => {
     let message = messages.__userMessages[number]?.[lang || 'en'] || messages.__userMessages[number]?.en || messages[number]?.[lang || 'en'] || messages[number]?.en;
     Object.keys(replace).forEach(key => message = message.replaceAll(`{${key}}`, replace[key]));
     return message;
@@ -206,7 +205,12 @@ function apiRoute(model, options = {}){
         if(language && language !== BrowserLanguage)
             lang = language;
         else
-            lang = req.acceptsLanguages().lang?.split?.('-')?.[0]?.toLowerCase()?.();
+            lang = req.acceptsLanguages()[0]?.split?.('-')?.[0]?.toLowerCase?.() || 'en';
+
+        res.sendMessage = (number, replace) => {
+            const ok = res.statusCode >= 200 && res.statusCode < 300;
+            res.json({ ok, status: res.statusCode, [ ok ? 'message': 'error' ]: message(number, lang, replace) });
+        }
 
         // Method check
         if(!methods.includes(req.method))
@@ -217,12 +221,12 @@ function apiRoute(model, options = {}){
             return next();
 
         for(const func of filter){
-            const result = await func(req, res, next);
+            const result = await func({ req, res, next });
             if(res.headersSent)
                 return;
             if(result !== true){
                 if(result === false)
-                    return res.status(403).json({ ok: false, status: 403, error: message(11, req) });
+                    return res.status(403).json({ ok: false, status: 403, error: message(11, lang) });
                 if(typeof result === 'object')
                     return res.status(result?.status || 403).json(result);
                 return res.status(403).json({ ok: false, status: 403, error: result });
@@ -291,7 +295,7 @@ function apiRoute(model, options = {}){
                         res.status(400).json({
                             ok: false,
                             status: 400,
-                            error: message(2, req, { key: translatedKey.toLowerCase() }),
+                            error: message(2, lang, { key: translatedKey.toLowerCase() }),
                             target: originalKey
                         });
                         return null;
@@ -315,21 +319,21 @@ function apiRoute(model, options = {}){
                     let errorMessage;
                     const translatedField = customFields[field][lang] || field;
                     if(fieldError.kind === 'required')
-                        errorMessage = message(3, req, { target: translatedField });
+                        errorMessage = message(3, lang, { target: translatedField });
                     else if(fieldError.kind === 'minlength')
-                        errorMessage = message(4, req, { target: translatedField });
+                        errorMessage = message(4, lang, { target: translatedField });
                     else if(fieldError.kind === 'maxlength')
-                        errorMessage = message(5, req, { target: translatedField });
+                        errorMessage = message(5, lang, { target: translatedField });
                     else if(fieldError.kind === 'min')
-                        errorMessage = message(6, req, { target: translatedField });
+                        errorMessage = message(6, lang, { target: translatedField });
                     else if(fieldError.kind === 'max')
-                        errorMessage = message(7, req, { target: translatedField });
+                        errorMessage = message(7, lang, { target: translatedField });
                     else if(fieldError.kind === 'enum')
-                        errorMessage = message(8, req, { target: translatedField });
+                        errorMessage = message(8, lang, { target: translatedField });
                     else if(fieldError.kind === 'regexp')
-                        errorMessage = message(9, req, { target: translatedField });
+                        errorMessage = message(9, lang, { target: translatedField });
                     else if(fieldError.kind === 'cast')
-                        errorMessage = message(10, req, { target: translatedField });
+                        errorMessage = message(10, lang, { target: translatedField });
                     
 
                     errors.push({ target: field, errorMessage })
@@ -513,5 +517,5 @@ function apiRoute(model, options = {}){
     }
 }
 
-export { BrowserLanguage };
+export { BrowserLanguage, defineMessage };
 export default apiRoute;

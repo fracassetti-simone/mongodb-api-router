@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import express from 'express';
 import bodyParser from 'body-parser';
-import apiRoute, { BrowserLanguage } from './index.js';
+import apiRoute, { BrowserLanguage, defineMessage } from './index.js';
 import { config } from 'dotenv';
 import 'colors';
 
@@ -29,6 +29,11 @@ const bookSchema = new mongoose.Schema({
 });
 const Book = mongoose.model('Book', bookSchema);
 
+defineMessage(9, {
+    it: 'Ciao',
+    en: 'Hello'
+})
+
 
 const app = express();
 
@@ -36,7 +41,12 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(apiRoute(Book, {
-    filter: ({ req, res }) => false
+    language: BrowserLanguage,
+    filter: async ({ req, res }) => {
+        const authorizationToken = req.headers.Authorization;
+        if(!authorizationToken)
+            return res.status(200).sendMessage(9);
+    }
 }));
 app.use(apiRoute(Author));
 
