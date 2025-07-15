@@ -1,6 +1,6 @@
 {
   "name": "mongodb-api-router",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "MongoDB API Router",
   "keywords": [
     "mongodb",
