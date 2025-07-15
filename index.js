@@ -144,6 +144,20 @@ const messages = {
         ja: '「{target}」の値の型が正しくありません。',
         ko: '"{target}" 값의 타입이 올바르지 않습니다.',
         ar: 'قيمة "{target}" ليست من النوع المتوقع.'
+    },
+    11: {
+        it: 'Non puoi fare questa richiesta.',
+        en: 'You cannot make this request.',
+        es: 'No puedes hacer esta solicitud.',
+        fr: 'Vous ne pouvez pas faire cette demande.',
+        de: 'Sie können diese Anfrage nicht stellen.',
+        pt: 'Você não pode fazer esta solicitação.',
+        nl: 'U kunt dit verzoek niet doen.',
+        ru: 'Вы не можете выполнить этот запрос.',
+        zh: '你不能发出这个请求。',
+        ja: 'このリクエストはできません。',
+        ko: '이 요청을 할 수 없습니다.',
+        ar: 'لا يمكنك تقديم هذا الطلب.'
     }
 };
 
@@ -166,8 +180,10 @@ function apiRoute(model, options = {}){
     // Filter
     if(typeof filter === 'function')
         filter = [ filter ];
-    if(!Array.isArray(filter) || filter.find(i => typeof i !== 'function'))
+    if(filter && (!Array.isArray(filter) || filter.find(i => typeof i !== 'function')))
         throw new Error("apiRoute(model, { filter }) -> filter must be a function, or an array of functions");
+    else if(!filter)
+        filter = [];
 
     // Methods
     methods = (methods || [ ...allowedMethods ]).map(i => i.toUpperCase());
@@ -202,12 +218,14 @@ function apiRoute(model, options = {}){
 
         for(const func of filter){
             const result = await func(req, res, next);
+            if(res.headersSent)
+                return;
             if(result !== true){
                 if(result === false)
-                    return res.status(400).json({ ok: false, status: 400, error: message(1, req) });
+                    return res.status(403).json({ ok: false, status: 403, error: message(11, req) });
                 if(typeof result === 'object')
-                    return res.status(result?.status || 400).json(result);
-                return res.status(400).json({ ok: false, status: 400, error: result });
+                    return res.status(result?.status || 403).json(result);
+                return res.status(403).json({ ok: false, status: 403, error: result });
             }
         }
 
@@ -222,7 +240,11 @@ function apiRoute(model, options = {}){
         let queryFields = acceptedQueryFields?.[req.method] || acceptedQueryFields?.[req.method.toLowerCase()] || Object.keys(model.schema.paths);
 
         const ignoreFields = [];
-        let { limit, page } = pagesManager;
+        let limit, page;
+        if(pagesManager){
+            limit = pagesManager.limit;
+            page = pagesManager.page;
+        }
 
         const parseFilter = (object, fields) => {
             // Pages manager
@@ -318,7 +340,7 @@ function apiRoute(model, options = {}){
         }
 
         // Further options
-        const furtherOptions = options.options[req.method] || options.options[req.method.toLowerCase()] || {};
+        const furtherOptions = options.options?.[req.method] || options.options?.[req.method.toLowerCase()] || {};
 
         if(furtherOptions.skimming && typeof furtherOptions.skimming === 'function')
             furtherOptions.skimming = [ furtherOptions.skimming ];
