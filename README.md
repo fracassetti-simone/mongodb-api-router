@@ -8,12 +8,14 @@
     - [Funzionalità](#funzionalità)
     - [Gestione Messaggi Multilingua](#gestione-messaggi-multilingua)
     - [Signature e Parametri](#signature-e-parametri)
+    - [Dettaglio Opzioni: "fields"](#dettaglio-opzioni-fields)
     - [Flusso Principale](#flusso-principale)
     - [Eccezioni e Gestione Errori](#eccezioni-e-gestione-errori)
     - [Diagramma dei Componenti Principali](#diagramma-dei-componenti-principali)
 4. [example.js — Esempio Avanzato](#examplejs)
     - [Schema e Relazioni](#schema-e-relazioni)
     - [Configurazione Avanzata del Middleware](#configurazione-avanzata-del-middleware)
+    - [Struttura Dettagliata di "fields" nell'Esempio](#struttura-dettagliata-di-fields-nellesempio)
     - [Esempi di Middleware e Skimming](#esempi-di-middleware-e-skimming)
     - [EndPoint API](#endpoint-api)
     - [Diagramma delle Relazioni tra Modelli](#diagramma-delle-relazioni-tra-modelli)
@@ -86,13 +88,90 @@ function apiRoute(model, options = {}) => (req, res, next) => { ... }
 |--------------------------|-------------------------------|-----------------------------------------------------------------------------|
 | `filter`                 | Function/Array                | Funzione/i di filtro per autorizzazione/validazione                         |
 | `methods`                | Array                         | Metodi HTTP permessi (default: tutti)                                       |
-| `fields`                 | Oggetto                       | Traduzioni/visibilità dei campi restituiti                                  |
+| [`fields`](#dettaglio-opzioni-fields) | Oggetto        | Traduzioni/visibilità dei campi restituiti                                  |
 | `route`                  | String                        | Percorso personalizzato (usa `{modelName}`, `{collectionName}`)             |
 | `pagesManager`           | Oggetto                       | Configurazione paginazione (`limit`, `page`, `maxResults`)                  |
 | `acceptedQueryFields`    | Oggetto/Array                 | Campi accettati in query per metodo                                         |
 | `throwRefusedQueryFields`| Boolean                       | Restituisce errore se parametri non permessi (default: false)               |
 | `language`               | String/Symbol                 | Forza lingua (o usa BrowserLanguage per autodetect)                         |
 | `options`                | Oggetto per metodo            | Middleware/skimming/fields personalizzati per metodo                        |
+
+---
+
+### Dettaglio Opzioni: "fields"
+
+L’opzione `fields` permette di:
+- **Tradurre i nomi dei campi** nei risultati in base alla lingua richiesta
+- **Nascondere campi** dalla risposta JSON
+- **Aggiungere logica avanzata** (es: mostrare solo in certe condizioni, se implementato)
+
+#### Struttura di `fields`
+
+```js
+fields: {
+  <NomeCampo>: {
+    <codiceLingua>: <NomeTradotto>,
+    show: <boolean> // opzionale, default true
+  },
+  ...
+}
+```
+
+**Esempi pratici:**
+
+```js
+fields: {
+  Title: { it: "Titolo", en: "Title" },    // "Title" viene chiamato "Titolo" per lingua italiana
+  __v: { show: false },                    // Il campo "__v" non viene mai restituito
+  Nome: { it: "Nome", en: "Name", show: true }
+}
+```
+
+#### Spiegazione delle proprietà
+
+| Proprietà           | Tipo      | Descrizione                                                         |
+|---------------------|-----------|---------------------------------------------------------------------|
+| `<codiceLingua>`    | String    | Codice lingua (es: `it`, `en`, `fr`, ecc.), imposta alias del campo |
+| `show`              | Boolean   | Se `false`, il campo viene rimosso dalla risposta JSON              |
+
+##### Esempio Risposta API con `fields` configurato
+
+Supponendo:
+
+```
+fields: {
+  Title: { it: "Titolo" },
+  __v: { show: false }
+}
+```
+
+**Risposta per lingua italiana**
+```json
+{
+  "books": [
+    {
+      "Titolo": "Il nome della rosa",
+      "Author": "..."
+    }
+  ]
+}
+```
+
+**Risposta per lingua inglese (o default)**
+```json
+{
+  "books": [
+    {
+      "Title": "Il nome della rosa",
+      "Author": "..."
+    }
+  ]
+}
+```
+
+**Nota:** Se un campo è impostato con `show: false`, non apparirà nella risposta.
+
+---
 
 ### Flusso Principale
 
@@ -125,6 +204,8 @@ flowchart TD
   DeleteFlow --> EndOk
 ```
 
+---
+
 ### Eccezioni e Gestione Errori
 
 **Eccezioni principali sollevate:**
@@ -137,6 +218,8 @@ flowchart TD
 ```json
 { "ok": false, "status": 400, "error": "Messaggio tradotto", ... }
 ```
+
+---
 
 ### Diagramma dei Componenti Principali
 
@@ -181,6 +264,8 @@ const bookSchema = new mongoose.Schema({ Title: { type: String, required: true }
 const Book = mongoose.model('Book', bookSchema);
 ```
 
+---
+
 ### Configurazione Avanzata del Middleware
 
 Qui viene mostrato un uso **ricco** di tutte le opzioni del middleware:
@@ -198,12 +283,67 @@ Qui viene mostrato un uso **ricco** di tutte le opzioni del middleware:
     - POST: trasforma titolo in maiuscolo, elimina `_id` in risposta
     - PUT: risposta custom JSON
 
-#### Esempio di middleware/skimming
+---
+
+### Struttura Dettagliata di "fields" nell'Esempio
+
+Nell’esempio avanzato, la proprietà `fields` è così strutturata:
 
 ```js
-middleware: ({ query }) => { /* manipola query prima della ricerca */ }
-skimming: [ ({ document }) => { document.Title = "Titolo: " + document.Title; return true; } ]
+fields: {
+  Title: { it: 'Titolo' },    // Solo per la lingua italiana, il campo "Title" diventa "Titolo"
+  __v: { show: false }        // Il campo "__v" viene nascosto in tutte le risposte
+}
 ```
+
+**Significato:**
+- `"Title: { it: 'Titolo' }"`:  
+  Quando la lingua accettata è italiana, il campo `"Title"` verrà restituito come `"Titolo"`. In tutte le altre lingue, il campo rimane `"Title"` (salvo altre traduzioni specificate).
+- `"__v: { show: false }"`:  
+  Il campo di versione interna di Mongoose non verrà mai restituito nella risposta API.
+
+Puoi aggiungere altre lingue o configurazioni così:
+
+```js
+fields: {
+  Title: { it: 'Titolo', en: 'Title', fr: 'Titre' },
+  __v: { show: false },
+  Author: { it: 'Autore', show: true }
+}
+```
+In questo modo il campo `"Title"` sarà adattato secondo la lingua della richiesta.
+
+---
+
+### Esempi di Middleware e Skimming
+
+```js
+options: {
+  get: {
+    middleware: ({ query }) => { /* manipola query prima della ricerca */ },
+    skimming: [ 
+      ({ req, res, next, document }) => {
+        document.Title = "Titolo: " + document.Title; return true;
+      },
+      ({ req, res, next, document }) => {
+        return document.Title.length > 1;
+      }
+    ]
+  },
+  post: {
+    middleware: [ async ({ req, res, next, document }) => {
+      document.Title = document.Title.toUpperCase();
+    }],
+    skimming: ({ document }) => { delete document._id; return true; },
+    fields: { __v: { show: true } }
+  },
+  put: {
+    middleware: ({ res, document }) => { res.json({ ok: false }) }
+  }
+}
+```
+
+---
 
 ### EndPoint API
 
@@ -211,6 +351,8 @@ skimming: [ ({ document }) => { document.Title = "Titolo: " + document.Title; re
 - **POST /db/books** — Crea libro, trasforma titolo
 - **PUT /db/books** — Aggiorna libro, middleware personalizzato
 - **DELETE /db/books** — Cancella secondo filtro
+
+---
 
 ### Diagramma delle Relazioni tra Modelli
 
