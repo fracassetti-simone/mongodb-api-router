@@ -309,7 +309,7 @@ function apiRoute(model, options = {}){
                     console.log(('Skimming error in ' + req.method + ' ' + model.modelName).yellow.bold);
                     console.log('\t' + e.message.brightRed.bold);
                     console.log(e.stack.split('\n').slice(1).map(i => '\t' + i).join('\n').gray);
-                    return results;
+                    return false;
                 }
             }
         }
@@ -317,21 +317,26 @@ function apiRoute(model, options = {}){
         const middleware = async (document, reportAllArguments = false) => {
             if(!furtherOptions.middleware?.length)
                 return document;
-            if(furtherOptions.middleware)
+            if(furtherOptions.middleware){
                 for(const middleware of furtherOptions.middleware){
                     try{
                         if(reportAllArguments)
-                            return await middleware({ ...document, req, res, next, query })
+                            await middleware({ ...document, req, res, next, query });
                         else
-                            return await middleware({ document, req, res, next, query })
+                            await middleware({ document, req, res, next, query });
+                        if(res.headersSent)
+                            return false;
                     }
                     catch(e){
                         console.log(('Middleware error in ' + req.method + ' ' + model.modelName).yellow.bold);
                         console.log('\t' + e.message.brightRed.bold);
                         console.log(e.stack.split('\n').slice(1).map(i => '\t' + i).join('\n').gray);
-                        return document;
+                        return false;
                     }
                 }
+                return document;
+            }
+            return document;
         }
 
 
@@ -434,6 +439,7 @@ function apiRoute(model, options = {}){
             return res.json({ ok: true, [ model.collection.name ]: results, pagesManager: pagesManager ? { page, offset: limit } : undefined });
         }
         else if(req.method === 'POST'){
+            // POST
             delete query._id;
             delete query.__v;
             let document = new model(query);
